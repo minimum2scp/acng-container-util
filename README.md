@@ -51,11 +51,12 @@ Commands:
   acng help [COMMAND]  # Describe available commands or one specific command
   acng init            # define acng shell function for bashrc, zshrc
   acng log             # view apt-cacher-ng container logs
-  acng set             # set http_proxy (to eval)
+  acng set             # set environment variable http_proxy (to eval)
   acng start           # start apt-cacher-ng container
   acng status          # status apt-cacher-ng container
   acng stop            # stop apt-cacher-ng container
-  acng unset           # set http_proxy (to eval)
+  acng unset           # unset environment variable http_proxy (to eval)
+
 ```
 
 ### Use apt-cacher-ng with apt-get
