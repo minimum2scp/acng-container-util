@@ -102,7 +102,7 @@ module ACNG
       docker_exec(options: "-ti")["sh -c \"tail -f /var/log/apt-cacher-ng/apt-cacher.*\""]
     end
 
-    desc 'set', 'set http_proxy (to eval)'
+    desc 'set', 'set environment variable http_proxy (to eval)'
     def set
       if acng_listen_addrs.empty?
         return
@@ -122,7 +122,7 @@ module ACNG
       puts shell + "; echo \"http_proxy=${http_proxy}\""
     end
 
-    desc 'unset', 'set http_proxy (to eval)'
+    desc 'unset', 'unset environment variable http_proxy (to eval)'
     def unset
       puts "unset http_proxy https_proxy"
     end
