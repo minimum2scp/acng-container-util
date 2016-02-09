@@ -1,0 +1,202 @@
+#! /usr/bin/env ruby
+
+require 'etc'
+require 'json'
+require 'yaml'
+require 'fileutils'
+require 'net/http'
+require 'pathname'
+require 'timeout'
+require 'uri'
+
+require 'text-table'
+require 'term/ansicolor'
+require 'thor'
+
+module ACNG
+  class Cli < Thor
+    PORT = 3142
+    CONTAINER_NAME = 'apt-cacher-ng'
+    IMAGE_NAME = 'minimum2scp/apt-cacher-ng:latest'
+    TMPDIR = "/tmp/apt-cacher-ng.#{Etc.getlogin}"
+    COMPOSE_PROJECT = 'acng'
+    COMPOSE_YAML = File.read(Pathname(__FILE__).dirname.dirname + 'docker-compose.yml.tmpl') % {
+      container_name: CONTAINER_NAME,
+      image_name: IMAGE_NAME,
+      port: PORT
+    }
+    REPORT_TIMEOUT = 3
+
+    desc 'init', 'define acng shell function for bashrc, zshrc'
+    def init
+      puts <<-'EOS'
+        acng (){
+          case "$1" in
+          set|unset)
+            eval "$(command acng $1)";;
+          *)
+            command acng "$@";;
+          esac
+        }
+      EOS
+    end
+
+    desc 'start', 'start apt-cacher-ng container'
+    def start
+      docker_compose["up -d"]
+    end
+
+    desc 'stop', 'stop apt-cacher-ng container'
+    def stop
+      docker_compose["kill"]
+      docker_compose["rm -f"]
+    end
+
+    desc 'status', 'status apt-cacher-ng container'
+    def status
+      puts "## docker-compose ps"
+      docker_compose["ps"]
+      puts ""
+
+      puts "## listening address and ports"
+      puts acng_listen_addr_table
+      puts ""
+
+      puts "## GET /acng-report.html"
+      table = Text::Table.new
+      acng_listen_addrs.each do |listen_addr|
+        report_url = "http://#{listen_addr[:address]}:#{listen_addr[:port]}/acng-report.html"
+        print "#{report_url} ... "
+        begin
+          Timeout.timeout(REPORT_TIMEOUT) do
+            uri = URI.parse(report_url)
+            res = Net::HTTP.start(uri.host, uri.port){ |http| http.get(uri.path) }
+            if res.code == '200'
+              print Term::ANSIColor.green{ "#{res.code} #{res.message}" }
+            else
+              print Term::ANSIColor.red{ "#{res.code} #{res.message}" }
+            end
+          end
+        rescue Timeout::Error
+          print Term::ANSIColor.red{"timeout"}
+        rescue => e
+          print Term::ANSIColor.red{"#{e.message} (#{e.class})"}
+        ensure
+          print "\n"
+        end
+      end
+      puts ""
+
+      puts "## environment variables"
+      %w[http_proxy https_proxy].each do |k|
+        puts "%{k}=%{v}" % {
+          k: k,
+          v: ENV.has_key?(k) ? ENV[k] : 'NULL'
+        }
+      end
+      puts ""
+    end
+
+    desc 'log', 'view apt-cacher-ng container logs'
+    def log
+      docker_exec(options: "-ti")["sh -c \"tail -f /var/log/apt-cacher-ng/apt-cacher.*\""]
+    end
+
+    desc 'set', 'set http_proxy (to eval)'
+    def set
+      if acng_listen_addrs.empty?
+        return
+      end
+
+      selected = IO.popen("peco", "r+") do |pipe|
+        pipe.puts acng_listen_addr_table
+        pipe.close_write
+        pipe.gets
+      end
+
+      if !selected || selected.empty? || selected.sub(/[\s+|-]*/,'') == ''
+        return
+      end
+
+      desc, address, port, shell = selected.chomp.strip.split('|', 6).map!{|col| col.strip!}[1,5]
+      puts shell + "; echo \"http_proxy=${http_proxy}\""
+    end
+
+    desc 'unset', 'set http_proxy (to eval)'
+    def unset
+      puts "unset http_proxy https_proxy"
+    end
+
+    no_commands do
+      def prepare_compose
+        unless File.directory?(TMPDIR)
+          FileUtils.mkdir TMPDIR
+        end
+        unless File.exist?("#{TMPDIR}/docker-compose.yml")
+          File.open("#{TMPDIR}/docker-compose.yml", "w") do |fh|
+            fh << COMPOSE_YAML
+          end
+        end
+      end
+
+      def docker_compose
+        prepare_compose
+        ->(*cmds){ system("docker-compose -p #{COMPOSE_PROJECT} -f #{TMPDIR}/docker-compose.yml #{cmds.join(' ')}") }
+      end
+
+      def docker_exec(options:"")
+        ->(*cmds){ system("docker exec #{options} #{CONTAINER_NAME} #{cmds.join(' ')}") }
+      end
+
+      def container_json
+        unless @container_json
+          prepare_compose
+          system("docker inspect #{CONTAINER_NAME} > #{TMPDIR}/container.json")
+          @container = JSON.parse(File.read("#{TMPDIR}/container.json")).find{|c|
+            c['State']['Status'] == 'running' && c['Name'] == "/#{CONTAINER_NAME}"
+          }
+        end
+        @container
+      end
+
+      def acng_listen_addrs
+        unless container_json
+          return []
+        end
+
+        unless @acng_lisen_addrs
+          @acng_listen_addrs = []
+
+          container_json['NetworkSettings']['Networks'].each do |network_name, network|
+            @acng_listen_addrs << { desc: "container (#{network_name})", address: network['IPAddress'], port: PORT }
+          end
+
+          container_json['NetworkSettings']['Ports']["#{PORT}/tcp"].each do |host_and_port|
+            host, port = host_and_port["HostIp"], host_and_port["HostPort"]
+            if host == "0.0.0.0"
+              `ip -4 -o a show`.each_line do |line|
+                dev, ip = ->(a){ [a[1], a[3].sub(/\/\d{1,2}\z/, '')]}[line.split]
+                @acng_listen_addrs << { desc: "host (#{dev})", address: ip, port: port }
+              end
+            else
+              @acng_listen_addrs << { desc: "host", address: ip, port: port }
+            end
+          end
+        end
+        @acng_listen_addrs
+      end
+
+      def acng_listen_addr_table
+        table = Text::Table.new
+        table.head = [:desc, :address, :port, :shell]
+        acng_listen_addrs.each do |addr|
+          table.rows << [addr[:desc], addr[:address], addr[:port], "export http_proxy=http://#{addr[:address]}:#{addr[:port]}/"]
+        end
+        table
+      end
+    end
+  end
+end
+
+ACNG::Cli.start(ARGV)
+
