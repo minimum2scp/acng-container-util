@@ -4,7 +4,6 @@ services:
     container_name: %{container_name}
     image: %{image_name}
     environment:
-      - USER_SSH_KEY_URI=minimum2scp
       - ACNG_BACKENDS_DEBIAN=http://ftp.jp.debian.org/debian/
     restart: always
     volumes:
