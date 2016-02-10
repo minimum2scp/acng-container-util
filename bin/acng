@@ -206,8 +206,7 @@ module ACNG
           begin
             u = URI.parse(ENV['DOCKER_HOST'])
             @docker_host = u.scheme == 'tcp' ? u.host : nil
-          rescue => e
-            warn "#{e.message} (#{e.class})"
+          rescue
             @docker_host = nil
           end
         end
