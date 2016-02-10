@@ -5,9 +5,7 @@ An interactive utility to use apt-cacher-ng ("acng" in short) docker container [
 ## Requirements
 
  * ruby
-   * text-table gem
-   * term-ansicolor gem
-   * thor gem
+ * bundler
  * docker
  * docker-compose
  * peco
@@ -18,6 +16,14 @@ An interactive utility to use apt-cacher-ng ("acng" in short) docker container [
 
 ```shell
 git clone https://github.com/minimum2scp/acng-container-util.git /path/to/acng-container-util
+```
+
+### bundle install
+
+```
+cd /path/to/acng-container-util
+mkdir -p vendor/bundle
+bundle install --path vendor/bundle
 ```
 
 ### Configure shell
