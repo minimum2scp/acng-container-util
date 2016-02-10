@@ -176,9 +176,13 @@ module ACNG
           container_json['NetworkSettings']['Ports']["#{PORT}/tcp"].each do |host_and_port|
             host, port = host_and_port["HostIp"], host_and_port["HostPort"]
             if host == "0.0.0.0"
-              `ip -4 -o a show`.each_line do |line|
-                dev, ip = ->(a){ [a[1], a[3].sub(/\/\d{1,2}\z/, '')]}[line.split]
-                @acng_listen_addrs << { desc: "host (#{dev})", address: ip, port: port }
+              if docker_host
+                @acng_listen_addrs << { desc: "DOCKER_HOST", address: docker_host, port: port }
+              else
+                `ip -4 -o a show`.each_line do |line|
+                  dev, ip = ->(a){ [a[1], a[3].sub(/\/\d{1,2}\z/, '')]}[line.split]
+                  @acng_listen_addrs << { desc: "host (#{dev})", address: ip, port: port }
+                end
               end
             else
               @acng_listen_addrs << { desc: "host", address: ip, port: port }
@@ -195,6 +199,19 @@ module ACNG
           table.rows << [addr[:desc], addr[:address], addr[:port], "export http_proxy=http://#{addr[:address]}:#{addr[:port]}/"]
         end
         table
+      end
+
+      def docker_host
+        unless defined?(@docker_host)
+          begin
+            u = URI.parse(ENV['DOCKER_HOST'])
+            @docker_host = u.scheme == 'tcp' ? u.host : nil
+          rescue => e
+            warn "#{e.message} (#{e.class})"
+            @docker_host = nil
+          end
+        end
+        @docker_host
       end
     end
   end
