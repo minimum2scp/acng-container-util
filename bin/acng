@@ -32,14 +32,13 @@ module ACNG
     desc 'init', 'define acng shell function for bashrc, zshrc'
     def init
       puts <<-'EOS'
-        acng (){
-          case "$1" in
-          set|unset)
-            eval "$(command acng $1)";;
-          *)
-            command acng "$@";;
-          esac
+        acng_precmd_hook (){
+          if [ -f /tmp/apt-cacher-ng.${USER}/http_proxy.sh ]; then
+            . /tmp/apt-cacher-ng.${USER}/http_proxy.sh
+          fi
         }
+        autoload -Uz add-zsh-hook
+        add-zsh-hook precmd acng_precmd_hook
       EOS
     end
 
@@ -93,6 +92,14 @@ module ACNG
       end
       puts ""
 
+      puts "## #{TMPDIR}/http_proxy.sh"
+      if File.exist?("#{TMPDIR}/http_proxy.sh")
+        puts File.read("#{TMPDIR}/http_proxy.sh")
+      else
+        puts "(does not exist)"
+      end
+      puts
+
       puts "## environment variables"
       %w[http_proxy https_proxy].each do |k|
         puts "%{k}=%{v}" % {
@@ -125,12 +132,17 @@ module ACNG
       end
 
       desc, address, port, shell = selected.chomp.strip.split('|', 6).map!{|col| col.strip!}[1,5]
-      puts shell + "; echo \"http_proxy=${http_proxy}\""
+
+      File.open("#{TMPDIR}/http_proxy.sh", "w") do |fh|
+        fh.puts shell
+      end
     end
 
     desc 'unset', 'unset environment variable http_proxy (to eval)'
     def unset
-      puts "unset http_proxy https_proxy"
+      File.open("#{TMPDIR}/http_proxy.sh", "w") do |fh|
+        fh.puts "unset http_proxy https_proxy"
+      end
     end
 
     no_commands do

@@ -28,7 +28,7 @@ bundle install --path vendor/bundle
 
 ### Configure shell
 
-Add the initialization code to your bashrc, or zshrc
+Add the initialization code to your zshrc
 
 ```shell
 export PATH=/path/to/acng-container-util/bin:$PATH
@@ -39,14 +39,13 @@ or
 
 ```shell
 export PATH=/path/to/acng-container-util/bin:$PATH
-acng (){
-  case "$1" in
-  set|unset)
-    eval "$(command acng $1)";;
-  *)
-    command acng "$@";;
-  esac
+acng_precmd_hook (){
+  if [ -f /tmp/apt-cacher-ng.${USER}/http_proxy.sh ]; then
+    . /tmp/apt-cacher-ng.${USER}/http_proxy.sh
+  fi
 }
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd acng_precmd_hook
 ```
 
 ## Usage
