@@ -60,6 +60,10 @@ module ACNG
       docker_compose["ps"]
       puts ""
 
+      puts "## disk usage"
+      docker_exec["du -sh /var/cache/apt-cacher-ng /var/lib/apt-cacher-ng"]
+      puts ""
+
       puts "## listening address and ports"
       puts acng_listen_addr_table
       puts ""
