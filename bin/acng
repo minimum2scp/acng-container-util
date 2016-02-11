@@ -51,6 +51,7 @@ module ACNG
     def stop
       docker_compose["kill"]
       docker_compose["rm -f"]
+      unset
     end
 
     desc 'status', 'status apt-cacher-ng container'
